@@ -1,0 +1,458 @@
+{
+  "name": "AI Website Generator - Main Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "start",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract project data from the incoming webhook\nconst projectId = $input.body.projectId || $input.first()?.json?.projectId || `project-${Date.now()}`;\nconst userId = $input.body.userId || $input.first()?.json?.userId || 'default-user';\nconst brief = $input.body.brief || $input.first()?.json?.brief || '';\n\n// Initialize project context\nconst projectContext = {\n  projectId,\n  userId,\n  brief,\n  status: 'initiated',\n  startTime: new Date().toISOString(),\n  stages: {\n    planner: { status: 'pending' },\n    content: { status: 'pending' },\n    designer: { status: 'pending' },\n    wordpress: { status: 'pending' }\n  },\n  memory: {}\n};\n\nreturn {\n  json: projectContext\n};"
+      },
+      "name": "Initialize Project",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Function to store context in memory system\nasync function storeContext(projectId, context) {\n  // In a real implementation, this would connect to a vector database\n  // For this example, we'll use a simple JSON object\n  \n  // Simulate storing in database\n  console.log(`Storing context for project ${projectId}`);\n  \n  // Return success response\n  return {\n    success: true,\n    timestamp: new Date().toISOString()\n  };\n}\n\n// Main function\nitem.json.memory.lastUpdate = new Date().toISOString();\nconst result = await storeContext(item.json.projectId, item.json);\n\n// Add the result to the item\nitem.json.memory.storeResult = result;\n\nreturn item;"
+      },
+      "name": "Memory System",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.brief && $json.brief.length > 0 }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Check Input",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "url": "=https://your-n8n-instance.com/webhook/planner-agent-workflow",
+        "options": {},
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "projectId",
+              "value": "={{ $json.projectId }}"
+            },
+            {
+              "name": "userId",
+              "value": "={{ $json.userId }}"
+            },
+            {
+              "name": "brief",
+              "value": "={{ $json.brief }}"
+            }
+          ]
+        }
+      },
+      "name": "Planner Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Planner Agent response\nconst inputData = $input.item.json;\nconst plannerResponse = $input.first()?.json || {};\n\n// Update project context with planner results\ninputData.stages.planner = {\n  status: plannerResponse.success ? 'completed' : 'failed',\n  completedAt: new Date().toISOString(),\n  data: plannerResponse\n};\n\n// Prepare for Content Agent\ninputData.currentStage = 'content';\n\nreturn {\n  json: inputData\n};"
+      },
+      "name": "Process Planner Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "url": "=https://your-n8n-instance.com/webhook/content-agent-workflow",
+        "options": {},
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "projectId",
+              "value": "={{ $json.projectId }}"
+            },
+            {
+              "name": "userId",
+              "value": "={{ $json.userId }}"
+            },
+            {
+              "name": "planData",
+              "value": "={{ $json.stages.planner.data }}"
+            }
+          ]
+        }
+      },
+      "name": "Content Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1450,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Content Agent response\nconst inputData = $input.item.json;\nconst contentResponse = $input.first()?.json || {};\n\n// Update project context with content results\ninputData.stages.content = {\n  status: contentResponse.success ? 'completed' : 'failed',\n  completedAt: new Date().toISOString(),\n  data: contentResponse\n};\n\n// Prepare for Designer Agent\ninputData.currentStage = 'designer';\n\nreturn {\n  json: inputData\n};"
+      },
+      "name": "Process Content Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1650,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "url": "=https://your-n8n-instance.com/webhook/designer-agent-workflow",
+        "options": {},
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "projectId",
+              "value": "={{ $json.projectId }}"
+            },
+            {
+              "name": "userId",
+              "value": "={{ $json.userId }}"
+            },
+            {
+              "name": "planData",
+              "value": "={{ $json.stages.planner.data }}"
+            },
+            {
+              "name": "contentData",
+              "value": "={{ $json.stages.content.data }}"
+            }
+          ]
+        }
+      },
+      "name": "Designer Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1850,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Designer Agent response\nconst inputData = $input.item.json;\nconst designerResponse = $input.first()?.json || {};\n\n// Update project context with designer results\ninputData.stages.designer = {\n  status: designerResponse.success ? 'completed' : 'failed',\n  completedAt: new Date().toISOString(),\n  data: designerResponse\n};\n\n// Prepare for WordPress Agent\ninputData.currentStage = 'wordpress';\n\nreturn {\n  json: inputData\n};"
+      },
+      "name": "Process Designer Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        2050,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "url": "=https://your-n8n-instance.com/webhook/wordpress-agent-workflow",
+        "options": {},
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "projectId",
+              "value": "={{ $json.projectId }}"
+            },
+            {
+              "name": "userId",
+              "value": "={{ $json.userId }}"
+            },
+            {
+              "name": "planData",
+              "value": "={{ $json.stages.planner.data }}"
+            },
+            {
+              "name": "contentData",
+              "value": "={{ $json.stages.content.data }}"
+            },
+            {
+              "name": "designData",
+              "value": "={{ $json.stages.designer.data }}"
+            }
+          ]
+        }
+      },
+      "name": "WordPress Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        2250,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process WordPress Agent response\nconst inputData = $input.item.json;\nconst wordpressResponse = $input.first()?.json || {};\n\n// Update project context with wordpress results\ninputData.stages.wordpress = {\n  status: wordpressResponse.success ? 'completed' : 'failed',\n  completedAt: new Date().toISOString(),\n  data: wordpressResponse\n};\n\n// Update project status\ninputData.status = 'completed';\ninputData.completedAt = new Date().toISOString();\n\nreturn {\n  json: inputData\n};"
+      },
+      "name": "Process WordPress Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        2450,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Final memory update with complete project data\nasync function updateMemory(projectId, finalContext) {\n  // In a real implementation, this would update the vector database\n  console.log(`Updating final context for project ${projectId}`);\n  \n  return {\n    success: true,\n    timestamp: new Date().toISOString()\n  };\n}\n\n// Update memory with final project state\nconst result = await updateMemory(item.json.projectId, item.json);\nitem.json.memory.finalUpdateResult = result;\n\nreturn item;"
+      },
+      "name": "Final Memory Update",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        2650,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2850,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create error response\nreturn {\n  json: {\n    success: false,\n    error: 'Missing required project brief',\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "name": "Error: Missing Brief",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Initialize Project",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Project": {
+      "main": [
+        [
+          {
+            "node": "Memory System",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memory System": {
+      "main": [
+        [
+          {
+            "node": "Check Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Input": {
+      "true": [
+        [
+          {
+            "node": "Planner Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "false": [
+        [
+          {
+            "node": "Error: Missing Brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Planner Agent": {
+      "main": [
+        [
+          {
+            "node": "Process Planner Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Planner Response": {
+      "main": [
+        [
+          {
+            "node": "Content Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Content Agent": {
+      "main": [
+        [
+          {
+            "node": "Process Content Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Content Response": {
+      "main": [
+        [
+          {
+            "node": "Designer Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Designer Agent": {
+      "main": [
+        [
+          {
+            "node": "Process Designer Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Designer Response": {
+      "main": [
+        [
+          {
+            "node": "WordPress Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WordPress Agent": {
+      "main": [
+        [
+          {
+            "node": "Process WordPress Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process WordPress Response": {
+      "main": [
+        [
+          {
+            "node": "Final Memory Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Memory Update": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error: Missing Brief": {
+      "main": [
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
